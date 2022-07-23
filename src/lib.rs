@@ -1,4 +1,4 @@
-use openssl::{cipher::Cipher, cipher_ctx::CipherCtx, error};
+use openssl::{error, symm};
 use paste::paste;
 use thiserror::Error;
 
@@ -13,15 +13,15 @@ pub enum Error {
 pub trait Crypter {
     fn key_length() -> usize;
 
-    fn iv_length() -> usize;
+    fn iv_length() -> Option<usize>;
 
-    fn encrypt(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>>;
+    fn encrypt(key: &[u8], iv: Option<&[u8]>, pt: &[u8], ct: &mut [u8]);
 
-    fn onetime_encrypt(key: &[u8], data: &[u8]) -> Result<Vec<u8>>;
+    fn onetime_encrypt(key: &[u8], pt: &[u8], ct: &mut [u8]);
 
-    fn decrypt(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>>;
+    fn decrypt(key: &[u8], iv: Option<&[u8]>, ct: &[u8], pt: &mut [u8]);
 
-    fn onetime_decrypt(key: &[u8], data: &[u8]) -> Result<Vec<u8>>;
+    fn onetime_decrypt(key: &[u8], ct: &[u8], pt: &mut [u8]);
 }
 
 macro_rules! crypter_bulk_impl {
@@ -31,45 +31,51 @@ macro_rules! crypter_bulk_impl {
 
             impl Crypter for [<$crypter:camel>] {
                 fn key_length() -> usize {
-                    Cipher::$crypter().key_length()
+                    symm::Cipher::$crypter().key_len()
                 }
 
-                fn iv_length() -> usize {
-                    Cipher::$crypter().iv_length()
+                fn iv_length() -> Option<usize> {
+                    symm::Cipher::$crypter().iv_len()
                 }
 
-                fn encrypt(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>> {
-                    let cipher = Cipher::$crypter();
-                    let mut ctx = CipherCtx::new()?;
-                    ctx.encrypt_init(Some(cipher), Some(key), Some(iv))?;
+                fn encrypt(key: &[u8], iv: Option<&[u8]>, pt: &[u8], ct: &mut [u8]) {
+                    let mut crypter = symm::Crypter::new(
+                        symm::Cipher::$crypter(),
+                        symm::Mode::Encrypt,
+                        key,
+                        iv,
+                    ).unwrap();
 
-                    let mut output = Vec::with_capacity(data.len());
-                    ctx.cipher_update_vec(data, &mut output)?;
-                    ctx.cipher_final_vec(&mut output)?;
-
-                    Ok(output)
+                    let bytes = crypter.update(pt, ct).unwrap();
+                    crypter.finalize(&mut ct[bytes..]).unwrap();
                 }
 
-                fn onetime_encrypt(key: &[u8], data: &[u8]) -> Result<Vec<u8>> {
-                    let iv = vec![0; Self::iv_length()];
-                    Self::encrypt(key, &iv, data)
+                fn onetime_encrypt(key: &[u8], pt: &[u8], ct: &mut [u8]) {
+                    if let Some(length) = Self::iv_length() {
+                        Self::encrypt(key, Some(vec![0; length].as_ref()), pt, ct)
+                    } else {
+                        Self::encrypt(key, None, pt, ct)
+                    }
                 }
 
-                fn decrypt(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>> {
-                    let cipher = Cipher::$crypter();
-                    let mut ctx = CipherCtx::new()?;
-                    ctx.decrypt_init(Some(cipher), Some(key), Some(iv))?;
+                fn decrypt(key: &[u8], iv: Option<&[u8]>, ct: &[u8], pt: &mut [u8]) {
+                    let mut crypter = symm::Crypter::new(
+                        symm::Cipher::$crypter(),
+                        symm::Mode::Decrypt,
+                        key,
+                        iv,
+                    ).unwrap();
 
-                    let mut output = Vec::with_capacity(data.len());
-                    ctx.cipher_update_vec(data, &mut output)?;
-                    ctx.cipher_final_vec(&mut output)?;
-
-                    Ok(output)
+                    let bytes = crypter.update(ct, pt).unwrap();
+                    crypter.finalize(&mut pt[bytes..]).unwrap();
                 }
 
-                fn onetime_decrypt(key: &[u8], data: &[u8]) -> Result<Vec<u8>> {
-                    let iv = vec![0; Self::iv_length()];
-                    Self::decrypt(key, &iv, data)
+                fn onetime_decrypt(key: &[u8], ct: &[u8], pt: &mut [u8]) {
+                    if let Some(length) = Self::iv_length() {
+                        Self::decrypt(key, Some(vec![0; length].as_ref()), ct, pt)
+                    } else {
+                        Self::decrypt(key, None, ct, pt)
+                    }
                 }
             }
         })*
@@ -77,11 +83,9 @@ macro_rules! crypter_bulk_impl {
 }
 
 crypter_bulk_impl!(
-    aes_128_cbc,
     aes_128_ctr,
     aes_128_xts,
     aes_128_ofb,
-    aes_256_cbc,
     aes_256_ctr,
     aes_256_ofb,
 );
@@ -93,38 +97,33 @@ pub mod prelude {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyhow::Result;
     use rand::{thread_rng, RngCore};
 
     macro_rules! crypter_test_bulk_impl {
         ($($crypter:ident),*$(,)?) => {
             $(paste! {
                 #[test]
-                fn $crypter() -> Result<()> {
+                fn $crypter() {
                     let mut key = vec![0; [<$crypter:camel>]::key_length()];
                     thread_rng().fill_bytes(&mut key);
 
-                    let mut iv = vec![0; [<$crypter:camel>]::iv_length()];
-                    thread_rng().fill_bytes(&mut iv);
-
                     let pt = b"this is a super secret message";
-                    let ct = [<$crypter:camel>]::encrypt(&key, &iv, pt)?;
-                    let xt = [<$crypter:camel>]::decrypt(&key, &iv, &ct)?;
+                    let mut ct = vec![0; pt.len()];
+                    let mut xt = vec![0; pt.len()];
+
+                    [<$crypter:camel>]::onetime_encrypt(&key, pt, &mut ct);
+                    [<$crypter:camel>]::onetime_decrypt(&key, &ct, &mut xt);
 
                     assert_eq!(&pt[..], &xt[..]);
-
-                    Ok(())
                 }
             })*
         };
     }
 
     crypter_test_bulk_impl!(
-        aes_128_cbc,
         aes_128_ctr,
         aes_128_xts,
         aes_128_ofb,
-        aes_256_cbc,
         aes_256_ctr,
         aes_256_ofb,
     );
