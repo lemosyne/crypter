@@ -15,7 +15,7 @@ pub trait Crypter {
 }
 
 #[cfg(feature = "openssl")]
-mod openssl {
+pub mod openssl {
     use crate::Crypter;
     use openssl::{cipher::Cipher, cipher_ctx::CipherCtx, error::ErrorStack};
     use paste::paste;
@@ -89,7 +89,7 @@ mod openssl {
 mod tests {
     #[cfg(feature = "openssl")]
     mod openssl {
-        use crate::{openssl::*, *};
+        use crate::{openssl::*, Crypter};
         use anyhow::Result;
         use paste::paste;
         use rand::{thread_rng, RngCore};
