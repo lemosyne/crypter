@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+aes-gcm = { version = "0.10.3", optional = true }
+aes-gcm-siv = { version = "0.11.1", optional = true }
+chacha20poly1305 = { version = "0.10.1", optional = true }
+generic-array = { version = "0.14", optional = true }
 openssl = { version = "0.10.41", features = ["vendored"], optional = true }
 paste = { version = "1.0.7", optional = true }
 
@@ -12,4 +16,7 @@ anyhow = "1.0.58"
 rand = "0.8.5"
 
 [features]
+aes-gcm = ["dep:aes-gcm", "dep:generic-array"]
+aes-gcm-siv = ["dep:aes-gcm-siv", "dep:generic-array"]
+chacha20poly1305 = ["dep:chacha20poly1305", "dep:generic-array"]
 openssl = ["dep:openssl", "dep:paste"]
