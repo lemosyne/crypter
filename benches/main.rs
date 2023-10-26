@@ -12,9 +12,9 @@ fn rand_bytes(rng: &mut impl RngCore, n: usize) -> Vec<u8> {
 }
 
 fn bench(c: &mut Criterion) {
-    let mut group = c.benchmark_group(format!("Per-Block Encryption Throughput"));
+    let mut group = c.benchmark_group("Per-Block Encryption/Decryption Throughput");
 
-    // We'll just test encrypting 1024 blocks.
+    // We'll just test encrypting and decrypting 1024 blocks.
     let mut rng = ThreadRng::default();
     let mut data = rand_bytes(&mut rng, NUM_BLOCKS * BLOCK_SIZE);
 
@@ -29,6 +29,7 @@ fn bench(c: &mut Criterion) {
                 let end = start + BLOCK_SIZE;
 
                 Aes128Ctr::encrypt(&key, &iv, &mut data[start..end]).unwrap();
+                Aes128Ctr::decrypt(&key, &iv, &mut data[start..end]).unwrap();
             }
         })
     });
@@ -44,6 +45,7 @@ fn bench(c: &mut Criterion) {
                 let end = start + BLOCK_SIZE;
 
                 Aes256Ctr::encrypt(&key, &iv, &mut data[start..end]).unwrap();
+                Aes256Ctr::decrypt(&key, &iv, &mut data[start..end]).unwrap();
             }
         })
     });
@@ -60,6 +62,7 @@ fn bench(c: &mut Criterion) {
                 let end = start + BLOCK_SIZE;
 
                 crypter.encrypt(&key, &iv, &mut data[start..end]).unwrap();
+                crypter.decrypt(&key, &iv, &mut data[start..end]).unwrap();
             }
         })
     });
@@ -76,6 +79,7 @@ fn bench(c: &mut Criterion) {
                 let end = start + BLOCK_SIZE;
 
                 crypter.encrypt(&key, &iv, &mut data[start..end]).unwrap();
+                crypter.decrypt(&key, &iv, &mut data[start..end]).unwrap();
             }
         })
     });
