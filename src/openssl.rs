@@ -1,15 +1,69 @@
-use crate::Crypter;
+use crate::{Crypter, StatefulCrypter};
 use openssl::{cipher::Cipher, cipher_ctx::CipherCtx, error::ErrorStack};
 use paste::paste;
 
 macro_rules! crypter_bulk_impl {
+    ($($crypter:ident),*$(,)?) => {
+        $(paste! {
+            pub struct [<$crypter:camel>];
+
+            impl Crypter for [<$crypter:camel>] {
+                type Error = ErrorStack;
+
+                fn key_length() -> usize {
+                    Cipher::$crypter().key_length()
+                }
+
+                fn iv_length() -> usize {
+                    Cipher::$crypter().iv_length()
+                }
+
+                fn encrypt(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::Error> {
+                    let cipher = Cipher::$crypter();
+                    let mut ctx = CipherCtx::new()?;
+                    ctx.encrypt_init(Some(cipher), Some(key), Some(iv))?;
+
+                    let mut output = Vec::with_capacity(data.len());
+                    ctx.cipher_update_vec(data, &mut output)?;
+                    ctx.cipher_final_vec(&mut output)?;
+
+                    Ok(output)
+                }
+
+                fn decrypt(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::Error> {
+                    let cipher = Cipher::$crypter();
+                    let mut ctx = CipherCtx::new()?;
+                    ctx.decrypt_init(Some(cipher), Some(key), Some(iv))?;
+
+                    let mut output = Vec::with_capacity(data.len());
+                    ctx.cipher_update_vec(data, &mut output)?;
+                    ctx.cipher_final_vec(&mut output)?;
+
+                    Ok(output)
+                }
+            }
+        })*
+    };
+}
+
+crypter_bulk_impl!(
+    aes_128_cbc,
+    aes_128_ctr,
+    aes_128_xts,
+    aes_128_ofb,
+    aes_256_cbc,
+    aes_256_ctr,
+    aes_256_ofb,
+);
+
+macro_rules! stateful_crypter_bulk_impl {
     ($(($crypter:ident,$keylen:expr,$ivlen:expr)),*$(,)?) => {
         $(paste! {
-            pub struct [<$crypter:camel>] {
+            pub struct [<Stateful $crypter:camel>] {
                 ctx: CipherCtx,
             }
 
-            impl [<$crypter:camel>] {
+            impl [<Stateful $crypter:camel>] {
                 pub fn new() -> Self {
                     let mut ctx = CipherCtx::new().unwrap();
 
@@ -22,7 +76,13 @@ macro_rules! crypter_bulk_impl {
                 }
             }
 
-            impl Crypter for [<$crypter:camel>] {
+            impl Default for [<Stateful $crypter:camel>] {
+                fn default() -> Self {
+                    Self::new()
+                }
+            }
+
+            impl StatefulCrypter for [<Stateful $crypter:camel>] {
                 type Error = ErrorStack;
 
                 fn key_length() -> usize {
@@ -51,45 +111,49 @@ macro_rules! crypter_bulk_impl {
     };
 }
 
-crypter_bulk_impl![(aes_128_ctr, 16, 16), (aes_256_ctr, 32, 16)];
-
-// pub struct StatefulAes128Ctr {
-//     ctx: CipherCtx,
-// }
-
-// impl StatefulAes128Ctr {
-//     pub fn new() -> Self {
-//         let mut ctx = CipherCtx::new();
-
-//         let cipher = Cipher::aes_128_ctr();
-//         ctx.encrypt_init(Some(cipher))
-//     }
-// }
-
-// impl StatefulCrypter for StatefulAes128Ctr {
-//     type Error = ErrorStack;
-
-//     fn key_length(&self) -> usize;
-
-//     fn iv_length(&self) -> usize;
-
-//     fn encrypt(&self, key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::Error>;
-
-//     fn onetime_encrypt(&self, key: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::Error>;
-
-//     fn decrypt(&self, key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::Error>;
-
-//     fn onetime_decrypt(&self, key: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::Error>;
-// }
+stateful_crypter_bulk_impl![(aes_128_ctr, 16, 16), (aes_256_ctr, 32, 16),];
 
 #[cfg(test)]
 mod tests {
-    use crate::{openssl::*, Crypter};
+    use crate::{openssl::*, Crypter, StatefulCrypter};
     use anyhow::Result;
     use paste::paste;
     use rand::{thread_rng, RngCore};
 
     macro_rules! crypter_test_bulk_impl {
+        ($($crypter:ident),*$(,)?) => {
+            $(paste! {
+                #[test]
+                fn $crypter() -> Result<()> {
+                    let mut key = vec![0; [<$crypter:camel>]::key_length()];
+                    thread_rng().fill_bytes(&mut key);
+
+                    let mut iv = vec![0; [<$crypter:camel>]::iv_length()];
+                    thread_rng().fill_bytes(&mut iv);
+
+                    let pt = b"this is a super secret message";
+                    let ct = [<$crypter:camel>]::encrypt(&key, &iv, pt)?;
+                    let xt = [<$crypter:camel>]::decrypt(&key, &iv, &ct)?;
+
+                    assert_eq!(&pt[..], &xt[..]);
+
+                    Ok(())
+                }
+            })*
+        };
+    }
+
+    crypter_test_bulk_impl![
+        aes_128_cbc,
+        aes_128_ctr,
+        aes_128_xts,
+        aes_128_ofb,
+        aes_256_cbc,
+        aes_256_ctr,
+        aes_256_ofb,
+    ];
+
+    macro_rules! stateful_crypter_test_bulk_impl {
         ($($crypter:ident),*$(,)?) => {
             $(paste! {
                 #[test]
@@ -116,5 +180,5 @@ mod tests {
         };
     }
 
-    crypter_test_bulk_impl![aes_128_ctr, aes_256_ctr];
+    stateful_crypter_test_bulk_impl![stateful_aes128_ctr, stateful_aes256_ctr];
 }
