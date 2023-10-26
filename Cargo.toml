@@ -25,3 +25,4 @@ openssl = ["dep:openssl", "dep:paste"]
 [[bench]]
 name = "main"
 harness = false
+required-features = ["openssl"]
