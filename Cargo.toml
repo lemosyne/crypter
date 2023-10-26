@@ -13,6 +13,7 @@ paste = { version = "1.0.7", optional = true }
 
 [dev-dependencies]
 anyhow = "1.0.58"
+criterion = { version = "0.5.1", features = ["html_reports"] }
 rand = "0.8.5"
 
 [features]
@@ -20,3 +21,7 @@ aes-gcm = ["dep:aes-gcm", "dep:generic-array"]
 aes-gcm-siv = ["dep:aes-gcm-siv", "dep:generic-array"]
 chacha20poly1305 = ["dep:chacha20poly1305", "dep:generic-array"]
 openssl = ["dep:openssl", "dep:paste"]
+
+[[bench]]
+name = "main"
+harness = false

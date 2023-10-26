@@ -5,15 +5,15 @@ pub trait Crypter {
 
     fn iv_length() -> usize;
 
-    fn encrypt(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::Error>;
+    fn encrypt(key: &[u8], iv: &[u8], data: &mut [u8]) -> Result<(), Self::Error>;
 
-    fn onetime_encrypt(key: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::Error> {
+    fn onetime_encrypt(key: &[u8], data: &mut [u8]) -> Result<(), Self::Error> {
         Self::encrypt(key, &vec![0; Self::iv_length()], data)
     }
 
-    fn decrypt(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::Error>;
+    fn decrypt(key: &[u8], iv: &[u8], data: &mut [u8]) -> Result<(), Self::Error>;
 
-    fn onetime_decrypt(key: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::Error> {
+    fn onetime_decrypt(key: &[u8], data: &mut [u8]) -> Result<(), Self::Error> {
         Self::decrypt(key, &vec![0; Self::iv_length()], data)
     }
 }

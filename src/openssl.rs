@@ -18,43 +18,34 @@ macro_rules! crypter_bulk_impl {
                     Cipher::$crypter().iv_length()
                 }
 
-                fn encrypt(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::Error> {
+                fn encrypt(key: &[u8], iv: &[u8], data: &mut [u8]) -> Result<(), Self::Error> {
                     let cipher = Cipher::$crypter();
                     let mut ctx = CipherCtx::new()?;
                     ctx.encrypt_init(Some(cipher), Some(key), Some(iv))?;
 
-                    let mut output = Vec::with_capacity(data.len());
-                    ctx.cipher_update_vec(data, &mut output)?;
-                    ctx.cipher_final_vec(&mut output)?;
+                    let n = ctx.cipher_update_inplace(data, data.len())?;
+                    ctx.cipher_final(&mut data[n..])?;
 
-                    Ok(output)
+                    Ok(())
                 }
 
-                fn decrypt(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, Self::Error> {
+                fn decrypt(key: &[u8], iv: &[u8], data: &mut [u8]) -> Result<(), Self::Error> {
                     let cipher = Cipher::$crypter();
                     let mut ctx = CipherCtx::new()?;
                     ctx.decrypt_init(Some(cipher), Some(key), Some(iv))?;
 
-                    let mut output = Vec::with_capacity(data.len());
-                    ctx.cipher_update_vec(data, &mut output)?;
-                    ctx.cipher_final_vec(&mut output)?;
+                    let n = ctx.cipher_update_inplace(data, data.len())?;
+                    ctx.cipher_final(&mut data[n..])?;
 
-                    Ok(output)
+                    Ok(())
+
                 }
             }
         })*
     };
 }
 
-crypter_bulk_impl!(
-    aes_128_cbc,
-    aes_128_ctr,
-    aes_128_xts,
-    aes_128_ofb,
-    aes_256_cbc,
-    aes_256_ctr,
-    aes_256_ofb,
-);
+crypter_bulk_impl![aes_128_ctr, aes_256_ctr];
 
 macro_rules! stateful_crypter_bulk_impl {
     ($(($crypter:ident,$keylen:expr,$ivlen:expr)),*$(,)?) => {
@@ -132,10 +123,13 @@ mod tests {
                     thread_rng().fill_bytes(&mut iv);
 
                     let pt = b"this is a super secret message";
-                    let ct = [<$crypter:camel>]::encrypt(&key, &iv, pt)?;
-                    let xt = [<$crypter:camel>]::decrypt(&key, &iv, &ct)?;
+                    let mut ct = pt.to_vec();
 
-                    assert_eq!(&pt[..], &xt[..]);
+                    [<$crypter:camel>]::encrypt(&key, &iv, &mut ct)?;
+                    assert_ne!(&pt[..], &ct[..]);
+
+                    [<$crypter:camel>]::decrypt(&key, &iv, &mut ct)?;
+                    assert_eq!(&pt[..], &ct[..]);
 
                     Ok(())
                 }
@@ -143,15 +137,7 @@ mod tests {
         };
     }
 
-    crypter_test_bulk_impl![
-        aes_128_cbc,
-        aes_128_ctr,
-        aes_128_xts,
-        aes_128_ofb,
-        aes_256_cbc,
-        aes_256_ctr,
-        aes_256_ofb,
-    ];
+    crypter_test_bulk_impl![aes_128_ctr, aes_256_ctr];
 
     macro_rules! stateful_crypter_test_bulk_impl {
         ($($crypter:ident),*$(,)?) => {
