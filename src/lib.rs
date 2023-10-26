@@ -21,6 +21,8 @@ pub trait Crypter {
 pub trait StatefulCrypter {
     type Error;
 
+    fn block_length() -> usize;
+
     fn key_length() -> usize;
 
     fn iv_length() -> usize;

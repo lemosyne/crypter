@@ -48,7 +48,7 @@ macro_rules! crypter_bulk_impl {
 crypter_bulk_impl![aes_128_ctr, aes_256_ctr];
 
 macro_rules! stateful_crypter_bulk_impl {
-    ($(($crypter:ident,$keylen:expr,$ivlen:expr)),*$(,)?) => {
+    ($(($crypter:ident,$blklen:expr,$keylen:expr,$ivlen:expr)),*$(,)?) => {
         $(paste! {
             pub struct [<Stateful $crypter:camel>] {
                 ctx: CipherCtx,
@@ -76,6 +76,10 @@ macro_rules! stateful_crypter_bulk_impl {
             impl StatefulCrypter for [<Stateful $crypter:camel>] {
                 type Error = ErrorStack;
 
+                fn block_length() -> usize {
+                    $blklen
+                }
+
                 fn key_length() -> usize {
                     $keylen
                 }
@@ -102,7 +106,7 @@ macro_rules! stateful_crypter_bulk_impl {
     };
 }
 
-stateful_crypter_bulk_impl![(aes_128_ctr, 16, 16), (aes_256_ctr, 32, 16),];
+stateful_crypter_bulk_impl![(aes_128_ctr, 16, 16, 16), (aes_256_ctr, 16, 32, 16),];
 
 #[cfg(test)]
 mod tests {
