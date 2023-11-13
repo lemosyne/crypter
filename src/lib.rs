@@ -1,5 +1,5 @@
 pub trait Crypter {
-    type Error: std::error::Error;
+    type Error: std::error::Error + core::fmt::Debug;
 
     fn key_length() -> usize;
 
@@ -21,7 +21,7 @@ pub trait Crypter {
 }
 
 pub trait StatefulCrypter {
-    type Error: std::error::Error;
+    type Error: std::error::Error + core::fmt::Debug;
 
     fn key_length() -> usize;
 
