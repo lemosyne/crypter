@@ -21,7 +21,7 @@ pub trait Crypter {
 }
 
 pub trait StatefulCrypter {
-    type Error: std::error::Error;
+    type Error;
 
     fn key_length() -> usize;
 
