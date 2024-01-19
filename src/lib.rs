@@ -1,5 +1,5 @@
 pub trait Crypter {
-    type Error: std::error::Error;
+    type Error;
 
     fn key_length() -> usize;
 
